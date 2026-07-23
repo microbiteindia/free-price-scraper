@@ -5,5 +5,5 @@ const { resolve } = require('path');
  */
 module.exports = {
   // Uses absolute path to ensure extract-zip receives a valid target directory
-  cacheDirectory: join(__dirname, '.cache', 'puppeteer'),
+  cacheDirectory: resolve(__dirname, '.cache', 'puppeteer'),
 };
