@@ -2,20 +2,23 @@ const express = require('express');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 
+// Enable stealth plugin
 puppeteer.use(StealthPlugin());
 
 const app = express();
 app.use(express.json());
 
+// Root test route
 app.get('/', (req, res) => {
-    res.json({ status: 'online', message: 'Price Scraper Service Ready' });
+    res.json({ message: 'Puppeteer scraper service is online!' });
 });
 
+// Scraping endpoint
 app.get('/scrape', async (req, res) => {
     const targetUrl = req.query.url;
 
     if (!targetUrl) {
-        return res.status(400).json({ success: false, error: "Missing 'url' query parameter" });
+        return res.status(400).json({ success: false, error: "Missing 'url' parameter" });
     }
 
     let browser;
@@ -26,7 +29,8 @@ app.get('/scrape', async (req, res) => {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-blink-features=AutomationControlled',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
                 '--window-size=1920,1080'
             ]
         });
@@ -34,25 +38,9 @@ app.get('/scrape', async (req, res) => {
         const page = await browser.newPage();
         await page.setViewport({ width: 1920, height: 1080 });
 
-        // Set natural browser headers to avoid detection
-        await page.setUserAgent(
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-        );
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
         const isFlipkart = targetUrl.includes('flipkart.com');
-
-        // Navigate to URL
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 35000 });
-
-        // Flipkart specific: Wait brief moment for client rendering
-        if (isFlipkart) {
-            try {
-                // Wait for any heading or main block
-                await page.waitForSelector('h1, span.VU-516, div.Nx9qGe, meta[property="og:title"]', { timeout: 6000 });
-            } catch (e) {
-                // Continue if selector wait times out
-            }
-        }
 
         const data = await page.evaluate((isFlipkart) => {
             const cleanPrice = (text) => {
@@ -61,73 +49,22 @@ app.get('/scrape', async (req, res) => {
                 return parseFloat(matches) || 0;
             };
 
-            const getMeta = (prop) => {
-                const el = document.querySelector(`meta[property="${prop}"], meta[name="${prop}"]`);
-                return el ? el.getAttribute('content') : '';
-            };
-
             let title = '';
             let priceText = '';
             let image = '';
 
             if (isFlipkart) {
-                // 1. Flipkart Title Fallbacks
-                const titleSelectors = [
-                    'span.VU-516',
-                    'span.B_NuT2',
-                    'h1._6ERy96',
-                    'h1.yhR1f2',
-                    'h1 span',
-                    'h1'
-                ];
-                for (const s of titleSelectors) {
-                    const el = document.querySelector(s);
-                    if (el && el.innerText.trim()) {
-                        title = el.innerText.trim();
-                        break;
-                    }
-                }
-                if (!title) title = getMeta('og:title');
+                const titleEl = document.querySelector('span.VU-516') || document.querySelector('.B_NuT2') || document.querySelector('h1');
+                title = titleEl ? titleEl.innerText.trim() : '';
 
-                // 2. Flipkart Price Fallbacks
-                const priceSelectors = [
-                    'div.Nx9qGe',
-                    'div._30jeq3',
-                    'div._16J9Bu',
-                    'div.hl25yM',
-                    'div._35Ky26'
-                ];
-                for (const s of priceSelectors) {
-                    const el = document.querySelector(s);
-                    if (el && el.innerText.trim()) {
-                        priceText = el.innerText.trim();
-                        break;
-                    }
-                }
-                if (!priceText) {
-                    priceText = getMeta('product:price:amount') || getMeta('og:price:amount');
-                }
+                const priceEl = document.querySelector('div.Nx9qGe') || document.querySelector('div._30jeq3') || document.querySelector('div._16J9Bu');
+                priceText = priceEl ? priceEl.innerText.trim() : '';
 
-                // 3. Flipkart Image Fallbacks
-                const imgSelectors = [
-                    'img._396cs4',
-                    'img.DCY3L0',
-                    'img._2r_T1I',
-                    'img[src*="flipkart.com/image"]'
-                ];
-                for (const s of imgSelectors) {
-                    const el = document.querySelector(s);
-                    if (el && el.src) {
-                        image = el.src;
-                        break;
-                    }
-                }
-                if (!image) image = getMeta('og:image');
-
+                const imgEl = document.querySelector('img._396cs4') || document.querySelector('img.DCY3L0');
+                image = imgEl ? imgEl.src : '';
             } else {
-                // Amazon logic (Preserved from working state)
                 const titleEl = document.querySelector('#productTitle') || document.querySelector('h1 span');
-                title = titleEl ? titleEl.innerText.trim() : (getMeta('title') || getMeta('og:title'));
+                title = titleEl ? titleEl.innerText.trim() : '';
 
                 const priceSelectors = [
                     '.a-price .a-offscreen',
@@ -145,14 +82,10 @@ app.get('/scrape', async (req, res) => {
                 }
 
                 const imgEl = document.querySelector('#landingImage') || document.querySelector('#imgBlkFront');
-                image = imgEl ? imgEl.src : getMeta('og:image');
+                image = imgEl ? imgEl.src : '';
             }
 
-            return {
-                title,
-                price: cleanPrice(priceText),
-                image
-            };
+            return { title, price: cleanPrice(priceText), image };
         }, isFlipkart);
 
         await browser.close();
@@ -168,7 +101,8 @@ app.get('/scrape', async (req, res) => {
     }
 });
 
+// START EXPRESS SERVER (Prevents early exit)
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`Server started on port ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
