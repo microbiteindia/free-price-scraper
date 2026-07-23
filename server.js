@@ -29,8 +29,7 @@ app.get('/scrape', async (req, res) => {
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
                 '--window-size=1920,1080'
             ]
         });
@@ -38,9 +37,24 @@ app.get('/scrape', async (req, res) => {
         const page = await browser.newPage();
         await page.setViewport({ width: 1920, height: 1080 });
 
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        // Set realistic browser headers to bypass basic detection
+        await page.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        );
 
         const isFlipkart = targetUrl.includes('flipkart.com');
+
+        // Navigate to the target page
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // IMPORTANT FOR FLIPKART: Wait up to 5s for hydrated DOM elements
+        if (isFlipkart) {
+            try {
+                await page.waitForSelector('h1, span.VU-516, .B_NuT2', { timeout: 5000 });
+            } catch (e) {
+                // Continue even if timeout occurs
+            }
+        }
 
         const data = await page.evaluate((isFlipkart) => {
             const cleanPrice = (text) => {
@@ -54,15 +68,53 @@ app.get('/scrape', async (req, res) => {
             let image = '';
 
             if (isFlipkart) {
-                const titleEl = document.querySelector('span.VU-516') || document.querySelector('.B_NuT2') || document.querySelector('h1');
-                title = titleEl ? titleEl.innerText.trim() : '';
+                // Expanded Flipkart Selectors
+                const titleSelectors = [
+                    'span.VU-516',
+                    'span.B_NuT2',
+                    'h1.yhR1f2',
+                    'h1._6ERy96',
+                    'h1 span',
+                    'h1'
+                ];
+                for (const s of titleSelectors) {
+                    const el = document.querySelector(s);
+                    if (el && el.innerText.trim()) {
+                        title = el.innerText.trim();
+                        break;
+                    }
+                }
 
-                const priceEl = document.querySelector('div.Nx9qGe') || document.querySelector('div._30jeq3') || document.querySelector('div._16J9Bu');
-                priceText = priceEl ? priceEl.innerText.trim() : '';
+                const priceSelectors = [
+                    'div.Nx9qGe',
+                    'div._30jeq3',
+                    'div._16J9Bu',
+                    'div.hl25yM',
+                    'div._35Ky26'
+                ];
+                for (const s of priceSelectors) {
+                    const el = document.querySelector(s);
+                    if (el && el.innerText.trim()) {
+                        priceText = el.innerText.trim();
+                        break;
+                    }
+                }
 
-                const imgEl = document.querySelector('img._396cs4') || document.querySelector('img.DCY3L0');
-                image = imgEl ? imgEl.src : '';
+                const imgSelectors = [
+                    'img._396cs4',
+                    'img.DCY3L0',
+                    'img._2r_T1I',
+                    'img[src*="flipkart.com/image"]'
+                ];
+                for (const s of imgSelectors) {
+                    const el = document.querySelector(s);
+                    if (el && el.src) {
+                        image = el.src;
+                        break;
+                    }
+                }
             } else {
+                // Amazon Selectors
                 const titleEl = document.querySelector('#productTitle') || document.querySelector('h1 span');
                 title = titleEl ? titleEl.innerText.trim() : '';
 
