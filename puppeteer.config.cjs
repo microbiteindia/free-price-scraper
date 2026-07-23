@@ -1,9 +1,9 @@
-const { join } = require('path');
+const { resolve } = require('path');
 
 /**
  * @type {import("puppeteer").Configuration}
  */
 module.exports = {
-  // Tells Puppeteer to store the downloaded browser inside the project folder
-  cacheDirectory: join(__dirname, '.cache', 'puppeteer'),
+  // Uses absolute path to ensure extract-zip receives a valid target directory
+  cacheDirectory: resolve(__dirname, '.cache', 'puppeteer'),
 };
