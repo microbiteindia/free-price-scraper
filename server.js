@@ -57,22 +57,8 @@ app.get('/scrape', async (req, res) => {
                 const titleEl = document.querySelector('span.VU-516') || document.querySelector('.B_NuT2') || document.querySelector('h1');
                 title = titleEl ? titleEl.innerText.trim() : '';
 
-               // const priceEl = document.querySelector('div.Nx9qGe') || document.querySelector('div._30jeq3') || document.querySelector('div._16J9Bu');
-               // priceText = priceEl ? priceEl.innerText.trim() : '';
-
-const priceSelectors = [
-                    '.a-price .a-offscreen',
-                    '#priceblock_ourprice',
-                    '#priceblock_dealprice',
-                    '.a-price-whole',
-                    '#corePrice_feature_div .a-offscreen'
-                ];
-                for (const selector of priceSelectors) {
-                    const el = document.querySelector(selector);
-                    if (el && el.innerText.trim()) {
-                        priceText = el.innerText.trim();
-                    }
-                }
+                const priceEl = document.querySelector('div.Nx9qGe') || document.querySelector('div._30jeq3') || document.querySelector('div._16J9Bu');
+                priceText = priceEl ? priceEl.innerText.trim() : '';
 
                 const imgEl = document.querySelector('img._396cs4') || document.querySelector('img.DCY3L0');
                 image = imgEl ? imgEl.src : '';
